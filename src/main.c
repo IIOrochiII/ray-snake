@@ -16,13 +16,19 @@ by Daniel Postolowicz
 #define CIRCLE_OFFSET RADIUS
 #define CELL_SIZE 100
 #define GRID_COUNT (WINDOW_HEIGHT / CELL_SIZE)
+#define MAX_SIZE 100
+
 
 int main()
 {
-	SetTargetFPS(5);
+	SetTargetFPS(60);
+	float moveTimer = 0.0f;
+	int hiscore = 0;
+	float moveInterval = 0.2f; // Lower = faster. 0.2f means it moves 5 times per second.
 	// Figures used in game 
 	Box box = { { BOX_SIZE, BOX_SIZE, BOX_SIZE, BOX_SIZE }, YELLOW };
 	Circle circle = { { BOX_SIZE, BOX_SIZE }, RADIUS, BLUE };
+	Box snake_cords[MAX_SIZE];
 	enum direction {
 		right,
 		left,
@@ -56,21 +62,29 @@ int main()
 	int score = 0;
 	int apple_eaten = 1;
 	// game loop
-	while (!WindowShouldClose())		// run the loop until the user presses ESCAPE or presses the Close button on the window
-	{
-		while (!WindowShouldClose()) {
-			// move mechanics
-			if (IsKeyPressed(KEY_A) && !IsKeyDown(KEY_D) && !IsKeyDown(KEY_W) && !IsKeyDown(KEY_D)) {
-				dir_snake = left;
-			}
-			if (IsKeyPressed(KEY_D) && !IsKeyDown(KEY_S) && !IsKeyDown(KEY_W) && !IsKeyDown(KEY_A)) {
-				dir_snake = right;
-			}
-			if (IsKeyPressed(KEY_S) && !IsKeyDown(KEY_D) && !IsKeyDown(KEY_W) && !IsKeyDown(KEY_A)) {
-				dir_snake = up;
-			}
-			if (IsKeyPressed(KEY_W) && !IsKeyDown(KEY_A) && !IsKeyDown(KEY_S) && !IsKeyDown(KEY_D)) {
-				dir_snake = down;
+	while (!WindowShouldClose()) {
+		// move mechanics
+		// 1. Define these variables outside your game loop (e.g., where box and dir_snake are declared)
+		if (IsKeyPressed(KEY_A) && dir_snake != right) {
+			dir_snake = left;
+		}
+		if (IsKeyPressed(KEY_D) && dir_snake != left) {
+			dir_snake = right;
+		}
+		if (IsKeyPressed(KEY_S) && dir_snake != down) {
+			dir_snake = up;
+		}
+		if (IsKeyPressed(KEY_W) && dir_snake != up) {
+			dir_snake = down;
+		}
+		moveTimer += GetFrameTime();
+		if (moveTimer >= moveInterval) {
+			Box prev_box = box;
+			Box prev_box2;
+			for (int i = 0;i < score;i++) {
+				prev_box2 = snake_cords[i];
+				snake_cords[i] = prev_box;
+				prev_box = prev_box2;
 			}
 			switch (dir_snake) {
 			case left:
@@ -86,74 +100,134 @@ int main()
 				box.rec.y -= 100;
 				break;
 			}
-			
-			// collision 
+			for (int i = 1; i < score; i++) {
+				if (box.rec.x == snake_cords[i].rec.x && box.rec.y == snake_cords[i].rec.y) {
+					if (score > hiscore) {
+						hiscore = score;
+					}
+					score = 0;
+					for (int i = 0; i < MAX_SIZE; i++) {
+						snake_cords[i].rec.x = -1000;
+						snake_cords[i].rec.x = -1000;
+					}
+					box.rec.x = 0;
+					box.rec.y = 0;
+					dir_snake = right;
+					break;
+				}
+			}
+			moveTimer = 0.0f;
+		}
 
-			// right edge (bierzemy pod uwagę szerokość boxa)
-			if (box.rec.x + box.rec.width > WINDOW_WIDTH) {
-				box.rec.x = WINDOW_WIDTH - box.rec.width;
+		// collision 
+		int hit_wall = 0;
+		// right edge(we consider box width)
+		if (box.rec.x + box.rec.width > WINDOW_WIDTH) {
+			box.rec.x = WINDOW_WIDTH - box.rec.width;
+		}
+		// left edge
+		if (box.rec.x < 0) {
+			box.rec.x = 0;
+			hit_wall = 1;
+		}
+		// down edge (we consider box height)
+		if (box.rec.y + box.rec.height > WINDOW_HEIGHT) {
+			box.rec.y = WINDOW_HEIGHT - box.rec.height;
+			hit_wall = 1;
+		}
+		// up edge
+		if (box.rec.y < 0) {
+			box.rec.y = 0;
+			hit_wall = 1;
+		}
+		if (hit_wall) {
+			if (score > hiscore) {
+				hiscore = score;
 			}
-			// left edge
-			if (box.rec.x < 0) {
-				box.rec.x = 0;
+			score = 0;
+			box.rec.x = 0;
+			box.rec.y = 0;
+			dir_snake = right;
+			for (int i = 0; i < MAX_SIZE; i++) {
+				snake_cords[i].rec.x = -1000;
+				snake_cords[i].rec.x = -1000;
 			}
-			// down edge (bierzemy pod uwagę wysokość boxa)
-			if (box.rec.y + box.rec.height > WINDOW_HEIGHT) {
-				box.rec.y = WINDOW_HEIGHT - box.rec.height;
-			}
-			// up edge
-			if (box.rec.y < 0) {
-				box.rec.y = 0;
-			}
-			// apple managment
+		}
+		// apple managment
+		if (CheckCollisionCircleRec((Vector2) { circle.center.x, circle.center.y }, 40, box.rec)) {
+			apple_eaten = 1;
+			score += 1;
+		}
 
-			if (apple_eaten == 1) {
+		if (apple_eaten == 1) {
+			bool position_invalid = true;
+			while (position_invalid) {
+				// 1.Get new apple position
+				int col = GetRandomValue(0, GRID_COUNT - 1);
+				int row = GetRandomValue(0, GRID_COUNT - 1);
+				circle.center.x = col * CELL_SIZE + CIRCLE_OFFSET;
+				circle.center.y = row * CELL_SIZE + CIRCLE_OFFSET;
+
+				// At first we assume that position of apple is good
+				position_invalid = false;
+
+				// 2. We check out the collision the snake's head
 				Vector2 boxCenter = (Vector2){
 					box.rec.x + box.rec.width / 2.0f,
 					box.rec.y + box.rec.height / 2.0f
 				};
+				if (Vector2Distance(boxCenter, circle.center) < 50.0f) { // Reduced to 50.0f
+					position_invalid = true;
+					continue; // Head collider we draw once again without checking the head
+				}
 
-				do {
-					int col = GetRandomValue(0, GRID_COUNT - 1);   // 0..7
-					int row = GetRandomValue(0, GRID_COUNT - 1);   // 0..7
-					circle.center.x = col * CELL_SIZE + CIRCLE_OFFSET;
-					circle.center.y = row * CELL_SIZE + CIRCLE_OFFSET;
-				} while (Vector2Distance(boxCenter, (Vector2) { circle.center.x, circle.center.y }) < 100.0f);
+				// 3. We check collision with every tail element
+				for (int i = 0; i < score; i++) {
+					Vector2 tail_element_center = (Vector2){
+						snake_cords[i].rec.x + snake_cords[i].rec.width / 2.0f,
+						snake_cords[i].rec.y + snake_cords[i].rec.height / 2.0f
+					};
 
-				apple_eaten = 0; 
+					if (Vector2Distance(tail_element_center, circle.center) < 50.0f) {
+						position_invalid = true; // Collision with snake's tail found
+						break; // We're breaking the loop, we need to randomize apple's position from beginning
+					}
+				}
 			}
-			if (CheckCollisionCircleRec((Vector2){circle.center.x, circle.center.y }, RADIUS, box.rec)) {
-				apple_eaten = 1;
-				score += 1;
-			}
 
-
-			// drawing
-			BeginDrawing();
-			// Setup the back buffer for drawing (clear color and depth buffers)
-			ClearBackground(BLACK);
-			DrawTextureRec(grid.texture,
-				(Rectangle) {
-				0, 0, (float)grid.texture.width, -(float)grid.texture.height
-			},
-				(Vector2) {
-				0, 0
-			}, WHITE);
-			// draw some text using the default font
-			DrawText("ray-snake", 0, 0, 0, WHITE);
-
-			DrawRectangleRec(box.rec, box.color);
-			DrawCircle((int)circle.center.x , (int)circle.center.y ,
-				circle.radius, circle.color);
-
-			// end the frame and get ready for the next one  (display frame, poll input, etc...)
-			EndDrawing();
+			apple_eaten = 0;
 		}
 
-		// cleanup
-		// unload our texture so it can be cleaned up
-		// destroy the window and cleanup the OpenGL context
-		CloseWindow();
-		return 0;
+
+		// drawing
+		BeginDrawing();
+		// Setup the back buffer for drawing (clear color and depth buffers)
+		ClearBackground(BLACK);
+		DrawTextureRec(grid.texture,
+			(Rectangle) {
+			0, 0, (float)grid.texture.width, -(float)grid.texture.height
+		},
+			(Vector2) {
+			0, 0
+		}, WHITE);
+		// draw some text using the default font
+		DrawText("ray-snake", 0, 0, 0, WHITE);
+		DrawText(TextFormat("Score: %i", score), WINDOW_HEIGHT - 100, WINDOW_HEIGHT - 100, 15, WHITE);
+		DrawText(TextFormat("HiScore: %i", hiscore), 0, WINDOW_HEIGHT - 100, 15, WHITE);
+		DrawRectangleRec(box.rec, box.color);
+		for (int i = 0;i < score;i++) {
+			DrawRectangleRec(snake_cords[i].rec, box.color);
+		}
+		DrawCircle((int)circle.center.x, (int)circle.center.y,
+			circle.radius, circle.color);
+
+		// end the frame and get ready for the next one  (display frame, poll input, etc...)
+		EndDrawing();
 	}
+
+	// cleanup
+	// unload our texture so it can be cleaned up
+	// destroy the window and cleanup the OpenGL context
+	CloseWindow();
+	return 0;
 }
