@@ -153,7 +153,7 @@ static void StepSnake(Game* g)
 		return;
 	}
 	// The last segment moves away in this step, so the head may enter its cell.
-	if (SnakeOccupies(s, head, s->length - 1)) {
+	if (SnakeOccupies(s, head, s->length)) {
 		GameOver(g);
 		return;
 	}
